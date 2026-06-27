@@ -1,0 +1,19 @@
+{
+  "name": "pointshift-phaser-black-canvas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "debug-web-server": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "test": "playwright test"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "vite": "^7.2.7"
+  }
+}
