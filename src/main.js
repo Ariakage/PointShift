@@ -7,7 +7,7 @@ const PLAYER_NICKNAME = 'Dot';
 const PLAYER_SPEED = 48 * UNIT;
 const NICKNAME_GAP = 4;
 const GRAVITY = 38 * UNIT;
-const JUMP_HEIGHT = UNIT;
+const JUMP_HEIGHT = 1.2 * UNIT;
 const JUMP_SPEED = Math.sqrt(2 * GRAVITY * JUMP_HEIGHT);
 const START_HEIGHT_UNITS = 3;
 const HORIZON_THICKNESS = Math.max(1, Math.round(UNIT / 10));
@@ -40,13 +40,19 @@ const WEIGHT_BLOCK_DIGITS = '100';
 const WEIGHT_BLOCK_INITIAL_DECIMAL_INDEX = 2;
 const PLAYER_PUSH_WEIGHT_KG = 1;
 const LEVEL3_BLOCK_SIZE = 3 * UNIT;
-const JUMP_HEIGHT_DIGITS = '10';
+const JUMP_HEIGHT_DIGITS = '12';
 const JUMP_HEIGHT_INITIAL_DECIMAL_INDEX = 1;
 const LEVEL4_MOVING_BLOCK_WIDTH = 3 * UNIT;
 const LEVEL4_MOVING_BLOCK_HEIGHT = UNIT;
 const LEVEL4_MOVING_BLOCK_RANGE = 7 * UNIT;
-const LEVEL4_MOVE_SPEED_DIGITS = '60';
-const LEVEL4_MOVE_SPEED_INITIAL_DECIMAL_INDEX = 1;
+const LEVEL4_MOVE_SPEED_DIGITS = '600';
+const LEVEL4_MOVE_SPEED_INITIAL_DECIMAL_INDEX = 2;
+const LEVEL5_TRAP_WIDTH_DIGITS = '125';
+const LEVEL5_TRAP_WIDTH_INITIAL_DECIMAL_INDEX = 1;
+const LEVEL6_PLATFORM_HEIGHT_DIGITS = '195';
+const LEVEL6_PLATFORM_HEIGHT_INITIAL_DECIMAL_INDEX = 1;
+const LEVEL7_RISK_WIDTH_DIGITS = '150';
+const LEVEL7_RISK_WIDTH_INITIAL_DECIMAL_INDEX = 1;
 const END_ANIMATION_DURATION_MS = 900;
 const BUTTON_WIDTH = 2 * UNIT;
 const BUTTON_HEIGHT = Math.max(1, Math.round(UNIT / 2));
@@ -82,9 +88,14 @@ class BlackScene extends Phaser.Scene {
     this.grounded = false;
     this.staticPhysicsObjects = [];
     this.staticColliders = [];
+    this.challengeHazardSensors = [];
+    this.challengeHazardOverlaps = [];
     this.weightDecimalIndex = WEIGHT_BLOCK_INITIAL_DECIMAL_INDEX;
     this.jumpHeightDecimalIndex = JUMP_HEIGHT_INITIAL_DECIMAL_INDEX;
     this.level4MoveSpeedDecimalIndex = LEVEL4_MOVE_SPEED_INITIAL_DECIMAL_INDEX;
+    this.level5TrapWidthDecimalIndex = LEVEL5_TRAP_WIDTH_INITIAL_DECIMAL_INDEX;
+    this.level6PlatformHeightDecimalIndex = LEVEL6_PLATFORM_HEIGHT_INITIAL_DECIMAL_INDEX;
+    this.level7RiskWidthDecimalIndex = LEVEL7_RISK_WIDTH_INITIAL_DECIMAL_INDEX;
     this.level4MovingBlockOffset = 0;
     this.level4MovingBlockDirection = 1;
     this.level4EndActive = false;
@@ -626,6 +637,107 @@ class BlackScene extends Phaser.Scene {
     };
   }
 
+  getLevel5Hazards(height = this.scale.gameSize.height, width = this.scale.gameSize.width) {
+    const horizon = this.getHorizonBounds(height);
+    const hazardHeight = Math.max(2, Math.round(UNIT * 0.55));
+    const baseY = horizon.y - hazardHeight;
+    const trapWidth = Math.round(this.getLevel5TrapWidthUnits() * UNIT);
+
+    return [
+      { x: Math.round(width * 0.34), y: baseY, width: trapWidth, height: hazardHeight },
+      { x: Math.round(width * 0.49), y: baseY, width: Math.round(trapWidth + UNIT * 0.4), height: hazardHeight },
+      { x: Math.round(width * 0.66), y: baseY, width: trapWidth, height: hazardHeight }
+    ];
+  }
+
+  getLevel6Platforms(height = this.scale.gameSize.height, width = this.scale.gameSize.width) {
+    const horizon = this.getHorizonBounds(height);
+    const platformHeight = Math.max(2, Math.round(UNIT * 0.22));
+
+    return [
+      {
+        x: Math.round(width * 0.28),
+        y: Math.round(horizon.y - 1.05 * UNIT),
+        width: Math.round(2.5 * UNIT),
+        height: platformHeight
+      },
+      {
+        x: Math.round(width * 0.44),
+        y: Math.round(horizon.y - this.getLevel6PlatformHeightUnits() * UNIT),
+        width: Math.round(2.5 * UNIT),
+        height: platformHeight
+      },
+      {
+        x: Math.round(width * 0.60),
+        y: Math.round(horizon.y - 1.15 * UNIT),
+        width: Math.round(2.5 * UNIT),
+        height: platformHeight
+      }
+    ];
+  }
+
+  getLevel7Platforms(height = this.scale.gameSize.height, width = this.scale.gameSize.width) {
+    const horizon = this.getHorizonBounds(height);
+    const platformHeight = Math.max(2, Math.round(UNIT * 0.22));
+    const step = Math.round(1.08 * UNIT);
+    const baseY = horizon.y - UNIT;
+    const rows = [
+      { x: Math.round(width * 0.08), w: Math.round(width * 0.30) },
+      { x: Math.round(width * 0.22), w: Math.round(width * 0.34) },
+      { x: Math.round(width * 0.40), w: Math.round(width * 0.34) },
+      { x: Math.round(width * 0.18), w: Math.round(width * 0.34) },
+      { x: Math.round(width * 0.34), w: Math.round(width * 0.36) },
+      { x: Math.round(width * 0.54), w: Math.max(UNIT * 3, Math.round(width * 0.39)) }
+    ];
+
+    return rows.map((row, index) => ({
+      x: row.x,
+      y: baseY - index * step,
+      width: Math.min(row.w, width - row.x - DOOR_WIDTH),
+      height: platformHeight,
+      layer: index + 1
+    }));
+  }
+
+  getLevel7Hazards(height = this.scale.gameSize.height, width = this.scale.gameSize.width) {
+    const platforms = this.getLevel7Platforms(height, width);
+    const hazardWidth = Math.round(this.getLevel7RiskWidthUnits() * UNIT);
+    const hazardHeight = Math.max(2, Math.round(UNIT * 0.45));
+
+    return platforms.slice(0, 5).map((platform, index) => ({
+      x: Math.round(platform.x + platform.width * (index % 2 === 0 ? 0.58 : 0.22)),
+      y: platform.y - hazardHeight,
+      width: Math.min(hazardWidth, Math.max(UNIT, Math.round(platform.width * 0.42))),
+      height: hazardHeight
+    }));
+  }
+
+  getLevel7RightDoorBounds(height = this.scale.gameSize.height, width = this.scale.gameSize.width) {
+    const topPlatform = this.getLevel7Platforms(height, width).at(-1);
+
+    return {
+      x: width - DOOR_WIDTH,
+      y: topPlatform.y - DOOR_HEIGHT,
+      width: DOOR_WIDTH,
+      height: DOOR_HEIGHT,
+      style: 'active-exit-door'
+    };
+  }
+
+  getLevel6Hazards(height = this.scale.gameSize.height, width = this.scale.gameSize.width) {
+    const horizon = this.getHorizonBounds(height);
+    const hazardHeight = Math.max(2, Math.round(UNIT * 0.55));
+
+    return [
+      {
+        x: Math.round(width * 0.39),
+        y: horizon.y - hazardHeight,
+        width: Math.round(8 * UNIT),
+        height: hazardHeight
+      }
+    ];
+  }
+
   getInitialLevel2WeightBlockBounds(height = this.scale.gameSize.height, width = this.scale.gameSize.width) {
     const groundY = this.getGroundY(height);
 
@@ -691,22 +803,22 @@ class BlackScene extends Phaser.Scene {
     );
   }
 
+  getDecimalValueText(digits, decimalIndex) {
+    const clampedIndex = Phaser.Math.Clamp(decimalIndex, 0, digits.length);
+
+    if (clampedIndex === 0) {
+      return `0.${digits}`;
+    }
+
+    if (clampedIndex >= digits.length) {
+      return digits;
+    }
+
+    return `${digits.slice(0, clampedIndex)}.${digits.slice(clampedIndex)}`;
+  }
+
   getJumpHeightValueText() {
-    const decimalIndex = Phaser.Math.Clamp(
-      this.jumpHeightDecimalIndex,
-      0,
-      JUMP_HEIGHT_DIGITS.length
-    );
-
-    if (decimalIndex === 0) {
-      return `0.${JUMP_HEIGHT_DIGITS}`;
-    }
-
-    if (decimalIndex >= JUMP_HEIGHT_DIGITS.length) {
-      return JUMP_HEIGHT_DIGITS;
-    }
-
-    return `${JUMP_HEIGHT_DIGITS.slice(0, decimalIndex)}.${JUMP_HEIGHT_DIGITS.slice(decimalIndex)}`;
+    return this.getDecimalValueText(JUMP_HEIGHT_DIGITS, this.jumpHeightDecimalIndex);
   }
 
   getJumpHeightUnits() {
@@ -718,21 +830,10 @@ class BlackScene extends Phaser.Scene {
   }
 
   getLevel4MoveSpeedValueText() {
-    const decimalIndex = Phaser.Math.Clamp(
-      this.level4MoveSpeedDecimalIndex,
-      0,
-      LEVEL4_MOVE_SPEED_DIGITS.length
+    return this.getDecimalValueText(
+      LEVEL4_MOVE_SPEED_DIGITS,
+      this.level4MoveSpeedDecimalIndex
     );
-
-    if (decimalIndex === 0) {
-      return `0.${LEVEL4_MOVE_SPEED_DIGITS}`;
-    }
-
-    if (decimalIndex >= LEVEL4_MOVE_SPEED_DIGITS.length) {
-      return LEVEL4_MOVE_SPEED_DIGITS;
-    }
-
-    return `${LEVEL4_MOVE_SPEED_DIGITS.slice(0, decimalIndex)}.${LEVEL4_MOVE_SPEED_DIGITS.slice(decimalIndex)}`;
   }
 
   getLevel4MoveSpeedUnits() {
@@ -741,6 +842,51 @@ class BlackScene extends Phaser.Scene {
 
   getLevel4MoveSpeedLabel() {
     return `MOVE SPEED\n${this.getLevel4MoveSpeedValueText()}unit/s`;
+  }
+
+  getLevel5TrapWidthValueText() {
+    return this.getDecimalValueText(
+      LEVEL5_TRAP_WIDTH_DIGITS,
+      this.level5TrapWidthDecimalIndex
+    );
+  }
+
+  getLevel5TrapWidthUnits() {
+    return Number.parseFloat(this.getLevel5TrapWidthValueText());
+  }
+
+  getLevel5TrapWidthLabel() {
+    return `TRAP WIDTH\n${this.getLevel5TrapWidthValueText()}unit`;
+  }
+
+  getLevel6PlatformHeightValueText() {
+    return this.getDecimalValueText(
+      LEVEL6_PLATFORM_HEIGHT_DIGITS,
+      this.level6PlatformHeightDecimalIndex
+    );
+  }
+
+  getLevel6PlatformHeightUnits() {
+    return Number.parseFloat(this.getLevel6PlatformHeightValueText());
+  }
+
+  getLevel6PlatformHeightLabel() {
+    return `LEDGE HEIGHT\n${this.getLevel6PlatformHeightValueText()}unit`;
+  }
+
+  getLevel7RiskWidthValueText() {
+    return this.getDecimalValueText(
+      LEVEL7_RISK_WIDTH_DIGITS,
+      this.level7RiskWidthDecimalIndex
+    );
+  }
+
+  getLevel7RiskWidthUnits() {
+    return Number.parseFloat(this.getLevel7RiskWidthValueText());
+  }
+
+  getLevel7RiskWidthLabel() {
+    return `LAYER RISK\n${this.getLevel7RiskWidthValueText()}unit`;
   }
 
   getJumpSpeed() {
@@ -754,9 +900,9 @@ class BlackScene extends Phaser.Scene {
   drawDoor() {
     this.doorGraphics.clear();
 
-    if (this.gameState === 'level3') {
+    if (this.gameState === 'level7') {
       const leftDoor = this.getLevel3LeftDoorBounds();
-      const rightDoor = this.getLevel3RightDoorBounds();
+      const rightDoor = this.getLevel7RightDoorBounds();
 
       this.drawPixelDoor(leftDoor, DISABLED_DOOR_COLOR);
       this.drawLockIcon(leftDoor.x + leftDoor.width / 2, leftDoor.y - 28, DISABLED_DOOR_COLOR);
@@ -764,9 +910,9 @@ class BlackScene extends Phaser.Scene {
       return;
     }
 
-    if (this.gameState === 'level4') {
-      const leftDoor = this.getLevel4LeftDoorBounds();
-      const rightDoor = this.getLevel4RightDoorBounds();
+    if (['level3', 'level4', 'level5', 'level6'].includes(this.gameState)) {
+      const leftDoor = this.getLevel3LeftDoorBounds();
+      const rightDoor = this.getLevel3RightDoorBounds();
 
       this.drawPixelDoor(leftDoor, DISABLED_DOOR_COLOR);
       this.drawLockIcon(leftDoor.x + leftDoor.width / 2, leftDoor.y - 28, DISABLED_DOOR_COLOR);
@@ -866,11 +1012,14 @@ class BlackScene extends Phaser.Scene {
     const isLevel2 = this.gameState === 'level2';
     const isLevel3 = this.gameState === 'level3';
     const isLevel4 = this.gameState === 'level4' && !this.level4EndActive;
+    const isLevel5 = this.gameState === 'level5' && !this.level4EndActive;
+    const isLevel6 = this.gameState === 'level6' && !this.level4EndActive;
+    const isLevel7 = this.gameState === 'level7' && !this.level4EndActive;
 
     this.levelObjectGraphics.clear();
-    this.levelObjectGraphics.setVisible(isLevel2 || isLevel3 || isLevel4);
+    this.levelObjectGraphics.setVisible(isLevel2 || isLevel3 || isLevel4 || isLevel5 || isLevel6 || isLevel7);
     this.weightBlockText.setVisible(isLevel2);
-    this.jumpHeightText.setVisible(isLevel3 || isLevel4);
+    this.jumpHeightText.setVisible(isLevel3 || isLevel4 || isLevel5 || isLevel6 || isLevel7);
 
     if (isLevel3) {
       const { width, height } = this.scale.gameSize;
@@ -900,6 +1049,48 @@ class BlackScene extends Phaser.Scene {
       return;
     }
 
+    if (isLevel5) {
+      for (const hazard of this.getLevel5Hazards()) {
+        this.drawHazardBlock(hazard);
+      }
+      this.jumpHeightText
+        .setText(this.getLevel5TrapWidthLabel())
+        .setPosition(this.scale.gameSize.width - 32, Math.max(150, Math.round(this.scale.gameSize.height * 0.38)));
+      return;
+    }
+
+    if (isLevel6) {
+      this.levelObjectGraphics.fillStyle(PLAYER_COLOR, 1);
+
+      for (const platform of this.getLevel6Platforms()) {
+        this.levelObjectGraphics.fillRect(platform.x, platform.y, platform.width, platform.height);
+      }
+
+      for (const hazard of this.getLevel6Hazards()) {
+        this.drawHazardBlock(hazard);
+      }
+      this.jumpHeightText
+        .setText(this.getLevel6PlatformHeightLabel())
+        .setPosition(this.scale.gameSize.width - 32, Math.max(150, Math.round(this.scale.gameSize.height * 0.38)));
+      return;
+    }
+
+    if (isLevel7) {
+      this.levelObjectGraphics.fillStyle(PLAYER_COLOR, 1);
+
+      for (const platform of this.getLevel7Platforms()) {
+        this.levelObjectGraphics.fillRect(platform.x, platform.y, platform.width, platform.height);
+      }
+
+      for (const hazard of this.getLevel7Hazards()) {
+        this.drawHazardBlock(hazard);
+      }
+      this.jumpHeightText
+        .setText(this.getLevel7RiskWidthLabel())
+        .setPosition(this.scale.gameSize.width - 32, Math.max(150, Math.round(this.scale.gameSize.height * 0.38)));
+      return;
+    }
+
     if (!isLevel2) {
       return;
     }
@@ -923,6 +1114,22 @@ class BlackScene extends Phaser.Scene {
       block.x + block.width / 2,
       block.y + block.height / 2
     );
+  }
+
+  drawHazardBlock(hazard) {
+    this.levelObjectGraphics.fillStyle(0x000000, 1);
+    this.levelObjectGraphics.fillRect(hazard.x, hazard.y, hazard.width, hazard.height);
+    this.levelObjectGraphics.lineStyle(2, PLAYER_COLOR, 1);
+    this.levelObjectGraphics.strokeRect(hazard.x, hazard.y, hazard.width, hazard.height);
+
+    for (let x = hazard.x + 4; x < hazard.x + hazard.width; x += 8) {
+      this.levelObjectGraphics.lineBetween(
+        x,
+        hazard.y + hazard.height - 2,
+        Math.min(x + 6, hazard.x + hazard.width - 2),
+        hazard.y + 2
+      );
+    }
   }
 
   handleWeightTextPointerDown(pointer) {
@@ -953,7 +1160,7 @@ class BlackScene extends Phaser.Scene {
   }
 
   handleRightSideNumberPointerDown(pointer) {
-    if (!['level3', 'level4'].includes(this.gameState) || this.level4EndActive) {
+    if (!['level3', 'level4', 'level5', 'level6', 'level7'].includes(this.gameState) || this.level4EndActive) {
       return;
     }
 
@@ -964,7 +1171,22 @@ class BlackScene extends Phaser.Scene {
       return;
     }
 
-    this.shiftLevel4MoveSpeedDecimal(isRightClick ? 1 : -1);
+    if (this.gameState === 'level4') {
+      this.shiftLevel4MoveSpeedDecimal(isRightClick ? 1 : -1);
+      return;
+    }
+
+    if (this.gameState === 'level5') {
+      this.shiftLevel5TrapWidthDecimal(isRightClick ? 1 : -1);
+      return;
+    }
+
+    if (this.gameState === 'level6') {
+      this.shiftLevel6PlatformHeightDecimal(isRightClick ? 1 : -1);
+      return;
+    }
+
+    this.shiftLevel7RiskWidthDecimal(isRightClick ? 1 : -1);
   }
 
   shiftJumpHeightDecimal(direction) {
@@ -999,6 +1221,60 @@ class BlackScene extends Phaser.Scene {
     this.jumpHeightText.setText(this.getLevel4MoveSpeedLabel());
     this.positionLevel3GuideText();
     this.drawLevelObjects();
+  }
+
+  shiftLevel5TrapWidthDecimal(direction) {
+    const nextDecimalIndex = Phaser.Math.Clamp(
+      this.level5TrapWidthDecimalIndex + direction,
+      0,
+      LEVEL5_TRAP_WIDTH_DIGITS.length
+    );
+
+    if (nextDecimalIndex === this.level5TrapWidthDecimalIndex) {
+      return;
+    }
+
+    this.level5TrapWidthDecimalIndex = nextDecimalIndex;
+    this.jumpHeightText.setText(this.getLevel5TrapWidthLabel());
+    this.positionLevel3GuideText();
+    this.drawLevelObjects();
+    this.rebuildPhysicsSolids();
+  }
+
+  shiftLevel6PlatformHeightDecimal(direction) {
+    const nextDecimalIndex = Phaser.Math.Clamp(
+      this.level6PlatformHeightDecimalIndex + direction,
+      0,
+      LEVEL6_PLATFORM_HEIGHT_DIGITS.length
+    );
+
+    if (nextDecimalIndex === this.level6PlatformHeightDecimalIndex) {
+      return;
+    }
+
+    this.level6PlatformHeightDecimalIndex = nextDecimalIndex;
+    this.jumpHeightText.setText(this.getLevel6PlatformHeightLabel());
+    this.positionLevel3GuideText();
+    this.drawLevelObjects();
+    this.rebuildPhysicsSolids();
+  }
+
+  shiftLevel7RiskWidthDecimal(direction) {
+    const nextDecimalIndex = Phaser.Math.Clamp(
+      this.level7RiskWidthDecimalIndex + direction,
+      0,
+      LEVEL7_RISK_WIDTH_DIGITS.length
+    );
+
+    if (nextDecimalIndex === this.level7RiskWidthDecimalIndex) {
+      return;
+    }
+
+    this.level7RiskWidthDecimalIndex = nextDecimalIndex;
+    this.jumpHeightText.setText(this.getLevel7RiskWidthLabel());
+    this.positionLevel3GuideText();
+    this.drawLevelObjects();
+    this.rebuildPhysicsSolids();
   }
 
   rebuildPhysicsSolids() {
@@ -1151,6 +1427,77 @@ class BlackScene extends Phaser.Scene {
         this.player,
         this.level4ExitSensor,
         this.handleLevel4ExitOverlap,
+        null,
+        this
+      );
+    }
+
+    if (['level5', 'level6', 'level7'].includes(this.gameState) && !this.level4EndActive) {
+      const leftDoor = this.getLevel3LeftDoorBounds(height);
+      const rightDoor = this.gameState === 'level7'
+        ? this.getLevel7RightDoorBounds(height, width)
+        : this.getLevel3RightDoorBounds(height, width);
+      const leftDoorSolid = this.addStaticPhysicsRect(
+        leftDoor.x,
+        leftDoor.y,
+        leftDoor.width,
+        leftDoor.height
+      );
+      const hazards = this.gameState === 'level5'
+        ? this.getLevel5Hazards(height, width)
+        : this.gameState === 'level6'
+          ? this.getLevel6Hazards(height, width)
+          : this.getLevel7Hazards(height, width);
+
+      this.staticColliders.push(this.physics.add.collider(this.player, leftDoorSolid));
+
+      if (['level6', 'level7'].includes(this.gameState)) {
+        const platforms = this.gameState === 'level6'
+          ? this.getLevel6Platforms(height, width)
+          : this.getLevel7Platforms(height, width);
+
+        for (const platform of platforms) {
+          const platformSolid = this.addStaticPhysicsRect(
+            platform.x,
+            platform.y,
+            platform.width,
+            platform.height
+          );
+          this.staticColliders.push(this.physics.add.collider(this.player, platformSolid));
+        }
+      }
+
+      for (const hazard of hazards) {
+        const hazardSensor = this.add
+          .rectangle(hazard.x, hazard.y, hazard.width, hazard.height, PLAYER_COLOR, 0)
+          .setOrigin(0, 0)
+          .setVisible(false);
+        this.physics.add.existing(hazardSensor, true);
+        hazardSensor.body.setSize(hazard.width, hazard.height);
+        hazardSensor.body.updateFromGameObject();
+        this.challengeHazardSensors.push(hazardSensor);
+        this.challengeHazardOverlaps.push(
+          this.physics.add.overlap(
+            this.player,
+            hazardSensor,
+            this.handleChallengeHazardOverlap,
+            null,
+            this
+          )
+        );
+      }
+
+      this.challengeExitSensor = this.add
+        .rectangle(rightDoor.x, rightDoor.y, rightDoor.width, rightDoor.height, PLAYER_COLOR, 0)
+        .setOrigin(0, 0)
+        .setVisible(false);
+      this.physics.add.existing(this.challengeExitSensor, true);
+      this.challengeExitSensor.body.setSize(rightDoor.width, rightDoor.height);
+      this.challengeExitSensor.body.updateFromGameObject();
+      this.challengeExitOverlap = this.physics.add.overlap(
+        this.player,
+        this.challengeExitSensor,
+        this.handleChallengeExitOverlap,
         null,
         this
       );
@@ -1376,6 +1723,26 @@ class BlackScene extends Phaser.Scene {
       this.level4HazardSensor = null;
     }
 
+    if (this.challengeExitOverlap) {
+      this.challengeExitOverlap.destroy();
+      this.challengeExitOverlap = null;
+    }
+
+    if (this.challengeExitSensor) {
+      this.challengeExitSensor.destroy();
+      this.challengeExitSensor = null;
+    }
+
+    for (const overlap of this.challengeHazardOverlaps) {
+      overlap.destroy();
+    }
+    this.challengeHazardOverlaps = [];
+
+    for (const sensor of this.challengeHazardSensors) {
+      sensor.destroy();
+    }
+    this.challengeHazardSensors = [];
+
     for (const object of this.staticPhysicsObjects) {
       object.destroy();
     }
@@ -1483,6 +1850,26 @@ class BlackScene extends Phaser.Scene {
     }
 
     if (this.gameState !== 'level4' || this.level4EndActive) {
+      if (['level5', 'level6', 'level7'].includes(this.gameState) && !this.level4EndActive) {
+        this.level3GuideText
+          .setText(
+            [
+              this.getChallengeNoteTitle(),
+              this.getChallengeNoteValue(),
+              'Click right number:',
+              'Left click  : decimal left',
+              'Right click : decimal right',
+              'Outlined blocks reset Dot',
+              'White ledges are safe',
+              'Cross the right door',
+              this.getChallengeNoteExitText()
+            ].join('\n')
+          )
+          .setPosition(32, Math.max(150, Math.round(height * 0.38)))
+          .setVisible(true);
+        return;
+      }
+
       this.level3GuideText.setVisible(false);
       return;
     }
@@ -1505,6 +1892,18 @@ class BlackScene extends Phaser.Scene {
   }
 
   getLevelLabel() {
+    if (this.gameState === 'level7') {
+      return 'LEVEL 7';
+    }
+
+    if (this.gameState === 'level6') {
+      return 'LEVEL 6';
+    }
+
+    if (this.gameState === 'level5') {
+      return 'LEVEL 5';
+    }
+
     if (this.gameState === 'level4') {
       return 'LEVEL 4';
     }
@@ -1518,6 +1917,42 @@ class BlackScene extends Phaser.Scene {
     }
 
     return 'LEVEL 1';
+  }
+
+  getChallengeNoteTitle() {
+    if (this.gameState === 'level5') {
+      return 'TRAP WIDTH NOTE';
+    }
+
+    if (this.gameState === 'level6') {
+      return 'LEDGE HEIGHT NOTE';
+    }
+
+    return 'SIX-LAYER NOTE';
+  }
+
+  getChallengeNoteValue() {
+    if (this.gameState === 'level5') {
+      return `Trap width: ${this.getLevel5TrapWidthValueText()}unit`;
+    }
+
+    if (this.gameState === 'level6') {
+      return `Ledge height: ${this.getLevel6PlatformHeightValueText()}unit`;
+    }
+
+    return `Layer risk: ${this.getLevel7RiskWidthValueText()}unit`;
+  }
+
+  getChallengeNoteExitText() {
+    if (this.gameState === 'level5') {
+      return 'to enter LEVEL 6';
+    }
+
+    if (this.gameState === 'level6') {
+      return 'to enter LEVEL 7';
+    }
+
+    return 'on the top layer to end';
   }
 
   drawControlsGuide() {
@@ -1608,7 +2043,9 @@ class BlackScene extends Phaser.Scene {
   }
 
   getMinimumPlayerX() {
-    return ['level2', 'level3', 'level4'].includes(this.gameState) ? DOOR_WIDTH : 0;
+    return ['level2', 'level3', 'level4', 'level5', 'level6', 'level7'].includes(this.gameState)
+      ? DOOR_WIDTH
+      : 0;
   }
 
   getPlayerBounds(x = this.playerPosition.x, y = this.playerPosition.y) {
@@ -1694,7 +2131,35 @@ class BlackScene extends Phaser.Scene {
       return;
     }
 
-    this.startLevel4EndSequence();
+    this.startLevel5Transition();
+  }
+
+  handleChallengeHazardOverlap() {
+    if (!['level5', 'level6', 'level7'].includes(this.gameState) || this.transition.active || this.level4EndActive) {
+      return;
+    }
+
+    this.resetPlayerToCurrentLevelStart();
+  }
+
+  handleChallengeExitOverlap() {
+    if (this.transition.active || this.level4EndActive) {
+      return;
+    }
+
+    if (this.gameState === 'level5') {
+      this.startLevel6Transition();
+      return;
+    }
+
+    if (this.gameState === 'level6') {
+      this.startLevel7Transition();
+      return;
+    }
+
+    if (this.gameState === 'level7') {
+      this.startLevel4EndSequence();
+    }
   }
 
   startLevel4EndSequence() {
@@ -1759,6 +2224,42 @@ class BlackScene extends Phaser.Scene {
     this.cameras.main.scrollX = this.transition.startScrollX + 1;
   }
 
+  startLevel5Transition() {
+    this.gameState = 'level5';
+    this.transition.active = true;
+    this.transition.elapsed = 1;
+    this.transition.offsetX = -1;
+    this.transition.startScrollX = this.cameras.main.scrollX;
+    this.transition.targetState = 'level5';
+    this.player.body.setVelocity(0, 0);
+    this.player.body.enable = false;
+    this.cameras.main.scrollX = this.transition.startScrollX + 1;
+  }
+
+  startLevel6Transition() {
+    this.gameState = 'level6';
+    this.transition.active = true;
+    this.transition.elapsed = 1;
+    this.transition.offsetX = -1;
+    this.transition.startScrollX = this.cameras.main.scrollX;
+    this.transition.targetState = 'level6';
+    this.player.body.setVelocity(0, 0);
+    this.player.body.enable = false;
+    this.cameras.main.scrollX = this.transition.startScrollX + 1;
+  }
+
+  startLevel7Transition() {
+    this.gameState = 'level7';
+    this.transition.active = true;
+    this.transition.elapsed = 1;
+    this.transition.offsetX = -1;
+    this.transition.startScrollX = this.cameras.main.scrollX;
+    this.transition.targetState = 'level7';
+    this.player.body.setVelocity(0, 0);
+    this.player.body.enable = false;
+    this.cameras.main.scrollX = this.transition.startScrollX + 1;
+  }
+
   updateLevelTransition(delta) {
     this.transition.elapsed = Math.min(
       this.transition.elapsed + delta,
@@ -1790,6 +2291,21 @@ class BlackScene extends Phaser.Scene {
 
     if (this.transition.targetState === 'level4') {
       this.setupLevel4Scene();
+      return;
+    }
+
+    if (this.transition.targetState === 'level5') {
+      this.setupLevel5Scene();
+      return;
+    }
+
+    if (this.transition.targetState === 'level6') {
+      this.setupLevel6Scene();
+      return;
+    }
+
+    if (this.transition.targetState === 'level7') {
+      this.setupLevel7Scene();
       return;
     }
 
@@ -1916,6 +2432,138 @@ class BlackScene extends Phaser.Scene {
     this.endText.setVisible(false);
     this.uiTexts.remark.setVisible(true).setAlpha(1);
     this.uiTexts.level.setVisible(true).setAlpha(1).setText('LEVEL 4');
+    this.uiTexts.title.setVisible(false);
+    this.uiTexts.author.setVisible(false);
+
+    this.paintBlack();
+    this.drawHorizon();
+    this.drawPlatforms();
+    this.drawDoor();
+    this.drawLevelObjects();
+    this.rebuildPhysicsSolids();
+    this.drawTrail();
+    this.positionUiTexts();
+    this.drawControlsGuide();
+    this.positionNickname();
+  }
+
+  setupLevel5Scene() {
+    const groundY = this.getGroundY();
+
+    this.sceneEmpty = false;
+    this.trailSamples = [];
+    this.level5TrapWidthDecimalIndex = LEVEL5_TRAP_WIDTH_INITIAL_DECIMAL_INDEX;
+    this.level4EndActive = false;
+    this.level4EndElapsed = 0;
+    this.player.body.enable = true;
+    this.setPlayerPosition(DOOR_WIDTH, groundY);
+
+    if (this.weightBlockObject?.body) {
+      this.weightBlockObject.body.enable = false;
+    }
+
+    this.trailGraphics.setVisible(true);
+    this.horizonGraphics.setVisible(true);
+    this.platformGraphics.setVisible(false);
+    this.levelObjectGraphics.setVisible(false);
+    this.doorGraphics.setVisible(true);
+    this.player.setVisible(true);
+    this.nicknameText.setVisible(true);
+    this.weightBlockText.setVisible(false);
+    this.level2GuideText.setVisible(false);
+    this.level3GuideText.setVisible(false);
+    this.jumpHeightText.setVisible(false);
+    this.endText.setVisible(false);
+    this.uiTexts.remark.setVisible(true).setAlpha(1);
+    this.uiTexts.level.setVisible(true).setAlpha(1).setText('LEVEL 5');
+    this.uiTexts.title.setVisible(false);
+    this.uiTexts.author.setVisible(false);
+
+    this.paintBlack();
+    this.drawHorizon();
+    this.drawPlatforms();
+    this.drawDoor();
+    this.drawLevelObjects();
+    this.rebuildPhysicsSolids();
+    this.drawTrail();
+    this.positionUiTexts();
+    this.drawControlsGuide();
+    this.positionNickname();
+  }
+
+  setupLevel6Scene() {
+    const groundY = this.getGroundY();
+
+    this.sceneEmpty = false;
+    this.trailSamples = [];
+    this.level6PlatformHeightDecimalIndex = LEVEL6_PLATFORM_HEIGHT_INITIAL_DECIMAL_INDEX;
+    this.level4EndActive = false;
+    this.level4EndElapsed = 0;
+    this.player.body.enable = true;
+    this.setPlayerPosition(DOOR_WIDTH, groundY);
+
+    if (this.weightBlockObject?.body) {
+      this.weightBlockObject.body.enable = false;
+    }
+
+    this.trailGraphics.setVisible(true);
+    this.horizonGraphics.setVisible(true);
+    this.platformGraphics.setVisible(false);
+    this.levelObjectGraphics.setVisible(false);
+    this.doorGraphics.setVisible(true);
+    this.player.setVisible(true);
+    this.nicknameText.setVisible(true);
+    this.weightBlockText.setVisible(false);
+    this.level2GuideText.setVisible(false);
+    this.level3GuideText.setVisible(false);
+    this.jumpHeightText.setVisible(false);
+    this.endText.setVisible(false);
+    this.uiTexts.remark.setVisible(true).setAlpha(1);
+    this.uiTexts.level.setVisible(true).setAlpha(1).setText('LEVEL 6');
+    this.uiTexts.title.setVisible(false);
+    this.uiTexts.author.setVisible(false);
+
+    this.paintBlack();
+    this.drawHorizon();
+    this.drawPlatforms();
+    this.drawDoor();
+    this.drawLevelObjects();
+    this.rebuildPhysicsSolids();
+    this.drawTrail();
+    this.positionUiTexts();
+    this.drawControlsGuide();
+    this.positionNickname();
+  }
+
+  setupLevel7Scene() {
+    const groundY = this.getGroundY();
+
+    this.sceneEmpty = false;
+    this.trailSamples = [];
+    this.level7RiskWidthDecimalIndex = LEVEL7_RISK_WIDTH_INITIAL_DECIMAL_INDEX;
+    this.level4EndActive = false;
+    this.level4EndElapsed = 0;
+    this.player.body.enable = true;
+    this.setPlayerPosition(DOOR_WIDTH, groundY);
+
+    if (this.weightBlockObject?.body) {
+      this.weightBlockObject.body.enable = false;
+    }
+
+    this.trailGraphics.setVisible(true);
+    this.horizonGraphics.setVisible(true);
+    this.platformGraphics.setVisible(false);
+    this.levelObjectGraphics.setVisible(false);
+    this.doorGraphics.setVisible(true);
+    this.player.setVisible(true);
+    this.nicknameText.setVisible(true);
+    this.weightBlockText.setVisible(false);
+    this.level2GuideText.setVisible(false);
+    this.level3GuideText.setVisible(false);
+    this.jumpHeightText.setVisible(false);
+    this.endText.setVisible(false);
+    this.uiTexts.remark.setVisible(true).setAlpha(1);
+    this.uiTexts.level.setVisible(true).setAlpha(1).setText('LEVEL 7');
     this.uiTexts.title.setVisible(false);
     this.uiTexts.author.setVisible(false);
 
